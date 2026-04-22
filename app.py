@@ -55,7 +55,7 @@ def addData():
     angle = data["angle"];
 
     if type(light) != int or type(angle) != int or type(time) != int:
-        return "data needs to be integers", 422
+        return jsonify({"error": "data needs to be integers"}, 422)
 
     e = f"""
     INSERT INTO data_table (timestamp, light, angle)
