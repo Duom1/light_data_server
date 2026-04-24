@@ -8,8 +8,8 @@ import os
 load_dotenv()
 
 
-DATABASE = "data.db"
 API_TOKEN = os.getenv("API_TOKEN")
+DATABASE = os.getenv("DB_LOCATION")
 
 
 app = Flask(__name__)
@@ -24,7 +24,7 @@ def require_token():
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DATABASE)
+        g.db = sqlite3.connect(DATABASE, check_same_thread=False)
         g.db.row_factory = sqlite3.Row  # optional but recommended
     return g.db
 

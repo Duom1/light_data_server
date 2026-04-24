@@ -3,3 +3,5 @@ CREATE TABLE IF NOT EXISTS data_table (
     light INTEGER NOT NULL,
     angle INTEGER NOT NULL
 );
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
