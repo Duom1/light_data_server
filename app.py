@@ -1,8 +1,8 @@
 from flask import request, Flask, g, jsonify
-import json
 import sqlite3
 from dotenv import load_dotenv
 import os
+import sys
 
 
 load_dotenv()
@@ -43,6 +43,36 @@ def close_db(error=None):
         db.close()
 
 
+@app.route('/getData', methods=['GET'])
+def getData():
+
+    e = f"""
+    SELECT *
+    FROM data_table
+    ORDER BY timestamp DESC
+    LIMIT 10;
+    """
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute(e)
+    # con.commit()
+
+    data = []
+    rows = cur.fetchall()
+    for row in rows:
+        data.append({
+            "time": row[0],
+            "light": row[1],
+            "angle": row[2]
+        })
+
+    con.close()
+
+    return jsonify(data), 200
+
+
 @app.route('/addData', methods=['POST'])
 def addData():
     if not require_token():
@@ -67,6 +97,7 @@ def addData():
 
     cur.executescript(e)
     con.commit()
+    con.close()
 
     return jsonify({"status": "ok"}), 200
 
