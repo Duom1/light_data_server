@@ -1,8 +1,9 @@
-from flask import request, Flask, g, jsonify
+from flask import Flask, request, Response, stream_with_context, g, jsonify
+from flask_cors import cross_origin
 import sqlite3
 from dotenv import load_dotenv
 import os
-import sys
+import threading
 
 
 load_dotenv()
@@ -13,6 +14,10 @@ DATABASE = os.getenv("DB_LOCATION")
 
 
 app = Flask(__name__)
+
+
+latest_row = None
+condition = threading.Condition()
 
 
 def require_token():
@@ -43,6 +48,20 @@ def close_db(error=None):
         db.close()
 
 
+@cross_origin
+@app.route('/getDataSse')
+def sse():
+    def generate():
+        global latest_row
+        with condition:
+            while True:
+                condition.wait()
+                if latest_row:
+                    yield f"data: {jsonify(latest_row)}\n\n"
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+
+@cross_origin
 @app.route('/getData', methods=['GET'])
 def getData():
 
@@ -75,6 +94,8 @@ def getData():
 
 @app.route('/addData', methods=['POST'])
 def addData():
+    global latest_row
+
     if not require_token():
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -91,6 +112,10 @@ def addData():
     INSERT INTO data_table (timestamp, light, angle)
     VALUES ({time}, {light}, {angle});
     """
+
+    with condition:
+        latest_row = data
+        condition.notify_all()
 
     con = get_db()
     cur = con.cursor()
