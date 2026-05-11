@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import json
 import os
 import threading
+import time
 
 
 load_dotenv()
@@ -15,10 +16,6 @@ DATABASE = os.getenv("DB_LOCATION")
 
 
 app = Flask(__name__)
-
-
-latest_row = None
-condition = threading.Condition()
 
 
 def require_token():
@@ -54,18 +51,27 @@ def close_db(error=None):
 @app.route('/getDataSse')
 def sse():
     def generate():
-        global latest_row
-        last_seen = None
+        e = f"""
+        SELECT *
+        FROM data_table
+        ORDER BY timestamp DESC
+        LIMIT 10;
+        """
 
+        con = get_db()
+        cur = con.cursor()
+        ff = {"time": 0}
         while True:
-            with condition:
-                while latest_row == last_seen:
-                    condition.wait()
 
-                data = latest_row
-                last_seen = data
+            cur.execute(e)
+            rows = cur.fetchall()
+            f = rows[0]
+            if ff["time"] != f[0]:
+                data = {"light": f[1], "angle": f[2], "time": f[0]}
+                yield f"data: {json.dumps(data)}\n\n"
+                ff = data
 
-            yield f"data: {json.dumps(data)}\n\n"
+            time.sleep(1)
 
     return Response(stream_with_context(generate()),
                     mimetype='text/event-stream')
@@ -123,10 +129,6 @@ def addData():
     INSERT INTO data_table (timestamp, light, angle)
     VALUES ({time}, {light}, {angle});
     """
-
-    with condition:
-        latest_row = data
-        condition.notify_all()
 
     con = get_db()
     cur = con.cursor()
