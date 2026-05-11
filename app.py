@@ -28,10 +28,11 @@ def require_token():
 
 
 def get_db():
-    if "db" not in g:
-        g.db = sqlite3.connect(DATABASE, check_same_thread=False)
-        g.db.row_factory = sqlite3.Row  # optional but recommended
-    return g.db
+    conn = sqlite3.connect(DATABASE, check_same_thread=False, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout = 30000;")
+    conn.row_factory = sqlite3.Row  # optional but recommended
+    return conn
 
 
 def init_db():
