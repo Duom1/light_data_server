@@ -2,6 +2,7 @@ from flask import Flask, request, Response, stream_with_context, g, jsonify
 from flask_cors import cross_origin
 import sqlite3
 from dotenv import load_dotenv
+import json
 import os
 import threading
 
@@ -54,12 +55,21 @@ def close_db(error=None):
 def sse():
     def generate():
         global latest_row
-        with condition:
-            while True:
-                condition.wait()
-                if latest_row:
-                    yield f"data: {jsonify(latest_row)}\n\n"
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+        last_seen = None
+
+        while True:
+            with condition:
+                while latest_row == last_seen:
+                    condition.wait()
+
+                data = latest_row
+                last_seen = data
+
+            yield f"data: {json.dumps(data)}\n\n"
+
+    return Response(stream_with_context(generate()),
+                    mimetype='text/event-stream')
+
 
 
 @cross_origin
