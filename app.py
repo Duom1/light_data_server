@@ -27,8 +27,8 @@ def require_token():
 
 def get_db():
     conn = sqlite3.connect(DATABASE, check_same_thread=False, timeout=30)
-    # conn.execute("PRAGMA journal_mode=WAL;")
-    # conn.execute("PRAGMA busy_timeout = 30000;")
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout = 30000;")
     conn.row_factory = sqlite3.Row  # optional but recommended
     return conn
 
@@ -47,7 +47,6 @@ def close_db(error=None):
         db.close()
 
 
-@cross_origin
 @app.route('/getDataSse')
 def sse():
     def generate():
@@ -75,14 +74,21 @@ def sse():
                 yield f"data: {json.dumps(data)}\n\n"
                 ff = data
 
+            con.close()
             time.sleep(1)
+            con = get_db()
+            cur = con.cursor()
 
-    return Response(stream_with_context(generate()),
+    response = Response(stream_with_context(generate()),
                     mimetype='text/event-stream')
 
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    
+    return response
 
 
-@cross_origin
+
+
 @app.route('/getData', methods=['GET'])
 def getData():
 
@@ -110,7 +116,10 @@ def getData():
 
     con.close()
 
-    return jsonify(data), 200
+    resp = Response(jsonify(data))
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+
+    return jsonify(data), 200, resp.headers.items()
 
 
 @app.route('/addData', methods=['POST'])
@@ -146,5 +155,5 @@ def addData():
 
 if __name__ == "__main__":
     init_db()
-    app.run()
+    app.run(host="0.0.0.0")
 

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sensor Data</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #f5f5f5; color: #1a1a1a; padding: 2rem; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 1.5rem; max-width: 700px; }
+    .metric { background: #fff; border-radius: 8px; padding: 12px 16px; border: 1px solid #e0e0e0; }
+    .metric-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+    .metric-value { font-size: 22px; font-weight: 500; }
+    .table-wrap { background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; max-width: 700px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    thead th { font-size: 11px; font-weight: 500; color: #888; text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 16px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+    tbody tr { border-bottom: 1px solid #f0f0f0; transition: background 0.4s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #fafafa; }
+    tbody td { padding: 10px 16px; }
+    .num { color: #888; }
+    .mono { font-family: monospace; font-size: 13px; color: #888; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+    .badge-high { background: #FAECE7; color: #993C1D; }
+    .badge-mid  { background: #FAEEDA; color: #854F0B; }
+    .badge-low  { background: #EAF3DE; color: #3B6D11; }
+    .new-row { background: #f0f9e8 !important; }
+    button { font-size: 13px; font-weight: 500; padding: 5px 14px; border-radius: 6px; border: 1px solid #d0d0d0; background: #fff; cursor: pointer; }
+    button:hover { background: #f5f5f5; }
+  </style>
+</head>
+<body>
+
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.5rem;">
+    <h1 style="margin:0;font-size:20px;font-weight:500;">Sensor data</h1>
+    <span id="status" style="font-size:12px;font-weight:500;padding:3px 10px;border-radius:999px;transition:all 0.3s;"></span>
+    <button id="saveBtn" style="margin-left:auto;">&#8595; Save testi.json</button>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Light</th>
+          <th>Angle (°)</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // ── config — set your server address here ───────────────────────────────
+    const BASE_URL  = 'http://10.141.201.26:5000';  // e.g. http://192.168.1.10:3000
+    const GET_DATA  = `${BASE_URL}/getData`;
+    const GET_SSE   = `${BASE_URL}/getDataSse`;
+    const JSON_FILE = 'testi.json';
+    const MAX_ROWS  = 10;
+    // ────────────────────────────────────────────────────────────────────────
+
+    let buffer = [];
+
+    /* ── render table + summary ──────────────────────────────────────────── */
+    function render(highlightLast = false) {
+      if (!buffer.length) return;
+
+      const lights = buffer.map(d => d.light);
+      const avg = Math.round(lights.reduce((a, b) => a + b, 0) / lights.length);
+      const max = Math.max(...lights);
+      const min = Math.min(...lights);
+
+      document.getElementById('summary').innerHTML = `
+        <div class="metric"><div class="metric-label">Avg light</div><div class="metric-value">${avg}</div></div>
+        <div class="metric"><div class="metric-label">Max light</div><div class="metric-value">${max}</div></div>
+        <div class="metric"><div class="metric-label">Min light</div><div class="metric-value">${min}</div></div>
+        <div class="metric"><div class="metric-label">Entries</div><div class="metric-value">${buffer.length} / ${MAX_ROWS}</div></div>
+      `;
+
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+      buffer.forEach((row, i) => {
+        const badgeClass = row.light > 300 ? 'badge-high' : row.light > 100 ? 'badge-mid' : 'badge-low';
+        const isNew = highlightLast && i === buffer.length - 1;
+        const tr = document.createElement('tr');
+        if (isNew) tr.className = 'new-row';
+        tr.innerHTML = `
+          <td class="num">${i + 1}</td>
+          <td><span class="badge ${badgeClass}">${row.light}</span></td>
+          <td>${row.angle}°</td>
+          <td class="mono">${row.time}</td>
+        `;
+        tbody.appendChild(tr);
+        if (isNew) setTimeout(() => tr.classList.remove('new-row'), 2000);
+      });
+    }
+
+    /* ── ingest one or many entries, keep only MAX_ROWS ─────────────────── */
+    function ingest(entries, highlight = false) {
+      const arr = Array.isArray(entries) ? entries : [entries];
+      arr.forEach(e => {
+        buffer.push(e);
+        if (buffer.length > MAX_ROWS) buffer.shift();
+      });
+      render(highlight);
+    }
+
+    /* ── status pill ─────────────────────────────────────────────────────── */
+    const pill = document.getElementById('status');
+    function setStatus(state) {
+      const map = {
+        connecting: ['Connecting…',  '#854F0B', '#FAEEDA'],
+        live:       ['● Live',       '#3B6D11', '#EAF3DE'],
+        error:      ['Disconnected', '#993C1D', '#FAECE7'],
+      };
+      const [text, color, bg] = map[state];
+      pill.textContent = text;
+      pill.style.color = color;
+      pill.style.background = bg;
+    }
+
+    /* ── 1. initial snapshot via GET /getData ────────────────────────────── */
+    async function loadInitial() {
+      try {
+        const res = await fetch(GET_DATA);
+        if (!res.ok) throw new Error(`/getData returned ${res.status}`);
+        const arr = await res.json();
+        ingest(arr, false);
+        console.log(`Loaded ${arr.length} entries from /getData`);
+      } catch (err) {
+        console.warn('Initial load failed:', err.message);
+      }
+    }
+
+    /* ── 2. live updates via SSE /getDataSse ─────────────────────────────── */
+    function connectSSE() {
+      setStatus('connecting');
+      const es = new EventSource(GET_SSE);
+
+      // unnamed message: single object or array
+      es.onmessage = e => {
+        try {
+          ingest(JSON.parse(e.data), true);
+          setStatus('live');
+        } catch {
+          console.warn('Could not parse SSE message:', e.data);
+        }
+      };
+
+      // optional named "snapshot" event (full array replacement)
+      es.addEventListener('snapshot', e => {
+        try {
+          ingest(JSON.parse(e.data), false);
+          setStatus('live');
+        } catch {
+          console.warn('Could not parse snapshot:', e.data);
+        }
+      });
+
+      es.onerror = () => {
+        setStatus('error');
+        es.close();
+        setTimeout(connectSSE, 5000);
+      };
+    }
+
+    /* ── save button — downloads current 10-entry buffer as testi.json ───── */
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(buffer, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = Object.assign(document.createElement('a'), { href: url, download: JSON_FILE });
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    /* ── boot ────────────────────────────────────────────────────────────── */
+    loadInitial().then(connectSSE);
+  </script>
+</body>
+</html>
