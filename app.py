@@ -27,8 +27,8 @@ def require_token():
 
 def get_db():
     conn = sqlite3.connect(DATABASE, check_same_thread=False, timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA busy_timeout = 30000;")
+    # conn.execute("PRAGMA journal_mode=WAL;")
+    # conn.execute("PRAGMA busy_timeout = 30000;")
     conn.row_factory = sqlite3.Row  # optional but recommended
     return conn
 
@@ -60,7 +60,11 @@ def sse():
 
         con = get_db()
         cur = con.cursor()
-        ff = {"time": 0}
+        cur.execute(e)
+        rows = cur.fetchall()
+        f = rows[0]
+        data = {"light": f[1], "angle": f[2], "time": f[0]}
+        ff = data
         while True:
 
             cur.execute(e)
